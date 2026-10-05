@@ -95,6 +95,11 @@ class MergeManager(private val context: Context) {
                         }
                     }
                 }
+                // 全部任务结束后统一清掉空目录（含条目之间的中间层），
+                // 逐个清理时并发判断不可靠，放这里一次后序遍历最稳
+                if (deleteSource) {
+                    runCatching { engine.pruneEmptyDirs(storage.root()) }
+                }
             } finally {
                 releaseWakeLock()
                 bump()

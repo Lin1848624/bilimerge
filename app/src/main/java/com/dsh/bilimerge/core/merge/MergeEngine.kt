@@ -7,6 +7,7 @@ import com.arthenica.ffmpegkit.Level
 import com.arthenica.ffmpegkit.LogCallback
 import com.arthenica.ffmpegkit.ReturnCode
 import com.arthenica.ffmpegkit.StatisticsCallback
+import com.dsh.bilimerge.core.fs.DocRef
 import com.dsh.bilimerge.core.fs.Storage
 import com.dsh.bilimerge.core.model.BiliItem
 
@@ -186,6 +187,39 @@ class MergeEngine(private val storage: Storage) {
         )
     }
 
+    /**
+     * 自底向上删除所有空目录。
+     *
+     * 条目目录删掉之后，它上面那些中间层目录（`{avid}/` 这类）会变成不含任何内容的空壳。
+     * 虽然不占空间，但会让人以为没删干净，所以一并清掉。
+     *
+     * 为什么放在所有任务结束后统一做，而不是每删完一个条目就顺手往上清：
+     * 并发合并时两个条目可能同时看到父目录"还有对方占着"，于是谁都不删，最后留下空目录。
+     * 一次性后序遍历没有这个问题。
+     *
+     * [root] 本身永不删除——它是用户选中的扫描根，删掉会让保存的 tree URI 失效，
+     * 下次启动直接报目录不存在。
+     *
+     * @return 删除的目录数
+     */
+    fun pruneEmptyDirs(root: DocRef): Int {
+        var removed = 0
+
+        fun walk(dir: DocRef, depth: Int) {
+            if (depth > MAX_PRUNE_DEPTH) return
+            for (child in storage.children(dir)) {
+                if (child.isDir) walk(child, depth + 1)
+            }
+            // 子树处理完后重新查一次：只有确实空了才删
+            if (dir.key != root.key && storage.children(dir).isEmpty()) {
+                if (storage.delete(dir)) removed++
+            }
+        }
+
+        runCatching { walk(root, 0) }
+        return removed
+    }
+
     /** 从 ffmpeg 的 stderr 里挑出最有信息量的一行给用户看 */
     private fun extractError(raw: String): String? {
         if (raw.isBlank()) return null
@@ -200,5 +234,10 @@ class MergeEngine(private val storage: Storage) {
         val picked = preferred ?: lines.last()
         // ffmpeg 的报错常带前缀，去掉后更干净
         return picked.substringAfter("] ", picked).take(300)
+    }
+
+    private companion object {
+        /** 缓存目录通常 3~4 层，留足余量的同时防住意外的深目录结构 */
+        const val MAX_PRUNE_DEPTH = 16
     }
 }

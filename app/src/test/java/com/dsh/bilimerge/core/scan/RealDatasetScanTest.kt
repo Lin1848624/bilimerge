@@ -1,6 +1,7 @@
 package com.dsh.bilimerge.core.scan
 
 import com.dsh.bilimerge.core.fs.FileStorage
+import com.dsh.bilimerge.core.merge.MergeEngine
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -116,6 +117,47 @@ class RealDatasetScanTest {
 
         assertTrue("首次删除应成功", storage.delete(node))
         assertTrue("再次删除应安全返回 false", !storage.delete(node))
+    }
+
+    @Test
+    fun `合并结束后中间层空目录会被清掉_扫描根保留`() {
+        val root = unzipDataset()
+        val storage = FileStorage(root)
+        val items = BiliScanner(storage).scan(storage.root())
+        assertEquals(4, items.size)
+
+        // 模拟每个条目合并成功后的"删除整个条目目录"
+        items.forEach { assertTrue("条目目录应能整个删掉", storage.deleteTree(it.rootDir!!)) }
+
+        // 此刻 download/{avid} 这些中间层都成了不含任何内容的空壳
+        assertTrue("中间层目录此刻还在", File(root, "1001").isDirectory)
+        assertTrue("且确实已经空了", (File(root, "1001").listFiles()?.size ?: 0) == 0)
+
+        // 走真实实现（MergeEngine 不依赖 Android 运行时，可以在 JVM 上直接调用）
+        val removed = MergeEngine(storage).pruneEmptyDirs(storage.root())
+
+        assertTrue("应当删掉了若干空目录", removed > 0)
+        assertTrue("扫描根本身必须保留", root.isDirectory)
+        assertEquals("扫描根下应已清空", 0, root.listFiles()?.size ?: 0)
+        assertTrue("中间层空目录应被删除", !File(root, "1001").exists())
+        assertTrue("更上一层同样应被删除", !File(root, "1002").exists())
+    }
+
+    @Test
+    fun `仍有内容的目录不会被误删`() {
+        val root = unzipDataset()
+        val storage = FileStorage(root)
+        val items = BiliScanner(storage).scan(storage.root())
+
+        // 只清理 1001 那一条，1002 原样留着
+        val only = items.first { it.dirLabel.contains("1001") }
+        assertTrue(storage.deleteTree(only.rootDir!!))
+
+        MergeEngine(storage).pruneEmptyDirs(storage.root())
+
+        assertTrue("空掉的 1001 应被删除", !File(root, "1001").exists())
+        assertTrue("还有内容的 1002 必须留着", File(root, "1002/2002/entry.json").isFile)
+        assertTrue("1003 同理", File(root, "1003/2003/entry.json").isFile)
     }
 
     // ------------------------------------------------------------------
