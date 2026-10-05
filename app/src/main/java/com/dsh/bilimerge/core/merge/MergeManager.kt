@@ -72,6 +72,7 @@ class MergeManager(private val context: Context) {
         concurrency: Int,
         fastStart: Boolean,
         forceStage: Boolean = false,
+        deleteSource: Boolean = false,
     ): Boolean {
         if (isRunning) return false
         if (items.isEmpty()) return false
@@ -87,7 +88,11 @@ class MergeManager(private val context: Context) {
                 val permits = Semaphore(concurrency.coerceIn(1, MAX_CONCURRENCY))
                 coroutineScope {
                     for (task in taskList) {
-                        launch { permits.withPermit { runOne(engine, task, output, fastStart, forceStage) } }
+                        launch {
+                            permits.withPermit {
+                                runOne(engine, task, output, fastStart, forceStage, deleteSource)
+                            }
+                        }
                     }
                 }
             } finally {
@@ -131,6 +136,7 @@ class MergeManager(private val context: Context) {
         output: OutputTarget,
         fastStart: Boolean,
         forceStage: Boolean,
+        deleteSource: Boolean,
     ) {
         if (task.status == Status.CANCELLED) return
         task.status = Status.RUNNING
@@ -195,7 +201,21 @@ class MergeManager(private val context: Context) {
             o.ok -> {
                 task.status = Status.DONE
                 task.progress = 1f
-                task.message = "完成 · ${com.dsh.bilimerge.core.util.Fmt.cost(o.elapsedMs)}"
+                val cost = com.dsh.bilimerge.core.util.Fmt.cost(o.elapsedMs)
+                // 清理放在这里而不是 engine 内部：只有 outcome.ok 才意味着成品已经 commit 成功，
+                // 此刻源分片才真正可以丢
+                task.message = if (deleteSource) {
+                    val total = task.item.videos.size + task.item.audios.size
+                    val removed = engine.deleteSources(task.item)
+                    when {
+                        total == 0 -> "完成 · $cost"
+                        removed == total -> "完成 · $cost · 源已清理"
+                        removed > 0 -> "完成 · $cost · 源清理 $removed/$total"
+                        else -> "完成 · $cost · 源未清理（无写权限）"
+                    }
+                } else {
+                    "完成 · $cost"
+                }
                 task.outputLabel = o.outputLabel
                 task.outputUri = preparedUri
                 task.elapsedMs = o.elapsedMs

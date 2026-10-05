@@ -51,6 +51,16 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_FORCE_STAGE, false)
         set(v) = sp.edit { putBoolean(KEY_FORCE_STAGE, v) }
 
+    /**
+     * 合并成功后删除源缓存分片。
+     *
+     * 默认关闭：删除不可逆，必须由用户明确选择。打开后只在**成品已确认落盘**时执行，
+     * 且只删本次用到的 m4s（GB 级的空间大头），不碰 entry.json 与目录本身。
+     */
+    var deleteSource: Boolean
+        get() = sp.getBoolean(KEY_DELETE_SOURCE, false)
+        set(v) = sp.edit { putBoolean(KEY_DELETE_SOURCE, v) }
+
     /** 上次扫描结果（JSON），用于冷启动秒开列表 */
     var scanCache: String?
         get() = sp.getString(KEY_SCAN_CACHE, null)
@@ -64,6 +74,7 @@ class Prefs(context: Context) {
         private const val KEY_CONCURRENCY = "concurrency"
         private const val KEY_FASTSTART = "faststart"
         private const val KEY_FORCE_STAGE = "force_stage"
+        private const val KEY_DELETE_SOURCE = "delete_source"
         private const val KEY_SCAN_CACHE = "scan_cache"
     }
 }

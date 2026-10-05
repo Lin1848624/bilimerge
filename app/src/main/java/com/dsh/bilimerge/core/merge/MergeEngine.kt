@@ -141,6 +141,28 @@ class MergeEngine(private val storage: Storage) {
         return Outcome(false, cancelled, msg, elapsed, output.label)
     }
 
+    /**
+     * 清理本次合并用到的源分片。
+     *
+     * 调用方必须**只在成品确认落盘之后**调用它——这是不可逆操作。
+     *
+     * 只删 [BiliItem.videos] 与 [BiliItem.audios] 里记录的媒体文件：它们是 GB 级的空间大头。
+     * 刻意不碰 entry.json / index.json / 弹幕，也不删目录本身——那些只有几 KB，
+     * 留着既能保留缓存的元信息，也避免把用户没要求删的东西一并抹掉。
+     *
+     * @return 成功删除的文件数；SAF 目录未授予写权限时会返回 0
+     */
+    fun deleteSources(item: BiliItem): Int {
+        var removed = 0
+        for (node in item.videos) {
+            if (storage.delete(node)) removed++
+        }
+        for (node in item.audios) {
+            if (storage.delete(node)) removed++
+        }
+        return removed
+    }
+
     /** 从 ffmpeg 的 stderr 里挑出最有信息量的一行给用户看 */
     private fun extractError(raw: String): String? {
         if (raw.isBlank()) return null

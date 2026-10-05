@@ -62,6 +62,47 @@ class RealDatasetScanTest {
         assertEquals(listOf("stream_b.m4s"), sniffed.audios.map { it.name })
     }
 
+    @Test
+    fun `清理源分片只删除媒体文件_保留元信息与目录`() {
+        val root = unzipDataset()
+        val storage = FileStorage(root)
+        val items = BiliScanner(storage).scan(storage.root())
+        assertEquals(4, items.size)
+
+        // 模拟 MergeEngine.deleteSources 的行为
+        val target = items.single { it.title.contains("新版结构") }
+        val before = target.videos.size + target.audios.size
+        var removed = 0
+        target.videos.forEach { if (storage.delete(it)) removed++ }
+        target.audios.forEach { if (storage.delete(it)) removed++ }
+        assertEquals("本次用到的分片都应被删掉", before, removed)
+
+        // 分片确实没了
+        assertTrue(!File(target.videos[0].path!!).exists())
+        assertTrue(!File(target.audios[0].path!!).exists())
+
+        // entry.json / index.json 与目录本身必须留着：清理只针对媒体文件
+        val dir = File(target.videos[0].path!!).parentFile!!
+        assertTrue("目录不应被删除", dir.isDirectory)
+        assertTrue("entry.json 不应被删除", File(dir.parentFile, "entry.json").isFile)
+        assertTrue("index.json 不应被删除", File(dir, "index.json").isFile)
+
+        // 其它条目不受影响
+        val other = items.single { it.title.contains("旧版结构") }
+        assertTrue("别的条目不该被牵连", File(other.videos[0].path!!).exists())
+    }
+
+    @Test
+    fun `重复删除同一个文件返回 false 而不是抛异常`() {
+        val root = unzipDataset()
+        val storage = FileStorage(root)
+        val items = BiliScanner(storage).scan(storage.root())
+        val node = items.first { it.videos.isNotEmpty() }.videos.first()
+
+        assertTrue("首次删除应成功", storage.delete(node))
+        assertTrue("再次删除应安全返回 false", !storage.delete(node))
+    }
+
     // ------------------------------------------------------------------
 
     private fun unzipDataset(): File {

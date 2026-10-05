@@ -37,6 +37,15 @@ interface Storage {
      * 真实路径后端直接返回绝对路径。
      */
     fun ffmpegUrl(node: DocRef, forWrite: Boolean = false): String?
+
+    /**
+     * 删除一个文件。
+     *
+     * SAF 后端要求该目录被授予了写权限，权限不足或 provider 拒绝时返回 false
+     * （不会抛异常，调用方据此提示"源文件清理失败"即可）。
+     * 只用于删除本次合并真正用到的源分片，绝不删除目录。
+     */
+    fun delete(node: DocRef): Boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +158,12 @@ class SafStorage(
         }.getOrNull()?.takeIf { it.startsWith("saf:") }
     }
 
+    override fun delete(node: DocRef): Boolean {
+        val uri = node.uri ?: return false
+        // deleteDocument 在无写权限时抛 SecurityException，这里吞掉并返回 false
+        return runCatching { DocumentsContract.deleteDocument(resolver, uri) }.getOrDefault(false)
+    }
+
     private companion object {
         val PROJECTION = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
@@ -231,6 +246,11 @@ class FileStorage(private val rootDir: File) : Storage {
     }
 
     override fun ffmpegUrl(node: DocRef, forWrite: Boolean): String? = node.path
+
+    override fun delete(node: DocRef): Boolean {
+        val f = File(node.path ?: return false)
+        return runCatching { f.isFile && f.delete() }.getOrDefault(false)
+    }
 }
 
 // ---------------------------------------------------------------------------

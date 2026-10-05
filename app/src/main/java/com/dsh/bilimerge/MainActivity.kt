@@ -293,6 +293,7 @@ class MainActivity : AppCompatActivity() {
             concurrency = concurrency,
             fastStart = prefs.fastStart,
             forceStage = prefs.forceStage,
+            deleteSource = prefs.deleteSource,
         )
         if (started) toast(getString(R.string.toast_merge_started, chosen.size))
     }
@@ -366,14 +367,16 @@ class MainActivity : AppCompatActivity() {
         val options = arrayOf(
             "为输出添加 faststart（便于边下边播，会多花一点时间）",
             "始终用兼容模式输出（先写私有目录再搬运，占双倍空间，仅在直写失败时需要）",
+            "合并成功后删除源缓存分片（不可恢复，但能及时释放空间）",
         )
-        val checked = booleanArrayOf(prefs.fastStart, prefs.forceStage)
+        val checked = booleanArrayOf(prefs.fastStart, prefs.forceStage, prefs.deleteSource)
         AlertDialog.Builder(this)
             .setTitle("设置")
             .setMultiChoiceItems(options, checked) { _, which, isChecked ->
                 when (which) {
                     0 -> prefs.fastStart = isChecked
                     1 -> prefs.forceStage = isChecked
+                    2 -> prefs.deleteSource = isChecked
                 }
             }
             .setPositiveButton("完成", null)
@@ -428,6 +431,9 @@ class MainActivity : AppCompatActivity() {
             · 只有画面没有声音的缓存也能合并，会自动识别
             · 目录结构从老版 {avid}/{cid}/lua.flv.bili2api.80/0.m4s 到新版
               {avid}/{cid}/{quality}/video.m4s 都支持，不依赖固定布局
+            · 合并默认不删除原缓存。批量处理怕占空间的话，可在「设置」里打开
+              「合并成功后删除源缓存分片」——它只在成品确认落盘后才执行，
+              且只删本次用到的 m4s，不会碰 entry.json 和目录本身
         """.trimIndent()
     }
 }
