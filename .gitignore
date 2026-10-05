@@ -1,0 +1,24 @@
+# 构建产物
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+*.hprof
+
+# Gradle / Kotlin 本地状态
+.gradle/
+.kotlin/
+
+# IDE
+.idea/
+*.iws
+*.ipr
+.vscode/
+
+# 本机 SDK 路径（换机器需重新生成）
+local.properties
+
+# 说明：app/bilimerge.jks 是自用调试签名，**有意**保留在仓库里，
+# 否则 release 变体无法直接构建。若要公开分发请换成自己的正式签名并移出仓库。

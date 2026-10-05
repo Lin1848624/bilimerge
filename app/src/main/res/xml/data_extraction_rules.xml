@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  本应用的数据全部是"用户自己选的目录 URI"，换机后指向的路径通常已失效，
+  备份过去只会带来困惑，所以云备份与设备迁移都全部排除。
+  （manifest 里的 allowBackup="false" 已覆盖 Android 11 及以下，
+   这份规则用于 Android 12+ 的显式声明。）
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#FB7299</color>
+    <color name="on_primary">#1A1C1E</color>
+
+    <color name="bg">#101215</color>
+    <color name="surface">#1A1D21</color>
+    <color name="surface_alt">#23272C</color>
+    <color name="divider">#2E3339</color>
+
+    <color name="text">#E9EBEE</color>
+    <color name="text_secondary">#98A0AA</color>
+    <color name="text_disabled">#5F666F</color>
+
+    <color name="success">#4CC47C</color>
+    <color name="danger">#F26A6A</color>
+</resources>

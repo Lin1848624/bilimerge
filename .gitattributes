@@ -1,0 +1,32 @@
+# 随仓库分发的行尾与二进制判定，保证任何人克隆后行为一致。
+# 刻意不配成全局 core.attributesFile：全局文本规则会给用户已有的所有仓库凭空制造行尾差异。
+
+# 默认交给 git 判定文本/二进制：文本入库统一为 LF，检出时按平台习惯还原
+* text=auto
+
+# ---- 行尾必须固定的例外 ----
+# 批处理必须是 CRLF：若以 LF 入库，别处克隆后 cmd.exe 会逐行吞掉首个字符，脚本无法执行
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# Gradle 的 Unix 启动脚本反过来必须 LF，否则 sh 会报 bad interpreter
+gradlew text eol=lf
+*.sh    text eol=lf
+# 仓库元文件与文档保持 LF，免得每次 git 操作都刷行尾警告
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+*.md           text eol=lf
+
+# ---- 二进制：不做行尾转换，不参与 diff ----
+*.png      binary
+*.jpg      binary
+*.webp     binary
+*.jar      binary
+*.jks      binary
+*.keystore binary
+*.zip      binary
+*.apk      binary
+*.aar      binary
+*.so       binary
+
+# 测试样本属于外部生成的固件，不计入语言统计
+app/src/test/resources/*.zip binary linguist-vendored
