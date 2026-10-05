@@ -6,6 +6,15 @@
 > 设计取向：**性能与体积优先**。单 ABI、零网络权限、无 Compose、无 Room、
 > 无 DataStore，APK 只有 ffmpeg 那一份必要开销。
 
+## 直接下载
+
+不想自己编译的话，到 [**Releases**](https://github.com/Lin1848624/bilimerge/releases)
+下载最新的 `BiliMerge-x.y.z-release.apk` 直接安装即可。
+
+- 环境要求：Android 7.0 (API 24) 及以上，**arm64-v8a**
+- 同页还有 `BiliMerge-TestCache.zip`，一份模拟缓存数据集，
+  不用真的缓存就能验证应用的四种识别路径
+
 ---
 
 ## 一、它解决什么问题
