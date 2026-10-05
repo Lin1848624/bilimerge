@@ -141,26 +141,49 @@ class MergeEngine(private val storage: Storage) {
         return Outcome(false, cancelled, msg, elapsed, output.label)
     }
 
+    /** 清理结果 */
+    class CleanupResult(
+        /** 目标是否已被彻底清干净 */
+        val ok: Boolean,
+        /** true 表示目标是扫描根目录，只清空了内容、目录本身保留 */
+        val keptRootDir: Boolean,
+        /** 失败原因，成功时为空 */
+        val reason: String = "",
+    )
+
     /**
-     * 清理本次合并用到的源分片。
+     * 清理整个缓存条目目录。
      *
      * 调用方必须**只在成品确认落盘之后**调用它——这是不可逆操作。
      *
-     * 只删 [BiliItem.videos] 与 [BiliItem.audios] 里记录的媒体文件：它们是 GB 级的空间大头。
-     * 刻意不碰 entry.json / index.json / 弹幕，也不删目录本身——那些只有几 KB，
-     * 留着既能保留缓存的元信息，也避免把用户没要求删的东西一并抹掉。
+     * 默认把条目根目录连同其中所有内容一起删掉：本次用到的分片、没被选中的其它清晰度、
+     * entry.json、index.json、弹幕，一个不留。这样批量处理完不会留下一堆空壳目录，
+     * 空间也释放得最彻底。
      *
-     * @return 成功删除的文件数；SAF 目录未授予写权限时会返回 0
+     * 唯一的例外是扫描根：如果条目根目录恰好就是用户选中的那个目录，删它会让用户选的
+     * 目录凭空消失（下次扫描直接报目录不存在），这种情况改为只清空内容、保留目录本身。
      */
-    fun deleteSources(item: BiliItem): Int {
-        var removed = 0
-        for (node in item.videos) {
-            if (storage.delete(node)) removed++
+    fun cleanupItem(item: BiliItem): CleanupResult {
+        val dir = item.rootDir
+            ?: return CleanupResult(false, false, "拿不到条目目录的引用")
+
+        if (item.rootIsScanRoot) {
+            storage.children(dir).forEach { storage.deleteTree(it) }
+            // 复查一次：删除是逐项进行的，可能只成功了一部分（例如无写权限）
+            val remaining = storage.children(dir).size
+            return CleanupResult(
+                ok = remaining == 0,
+                keptRootDir = true,
+                reason = if (remaining == 0) "" else "无写权限或目录被占用",
+            )
         }
-        for (node in item.audios) {
-            if (storage.delete(node)) removed++
-        }
-        return removed
+
+        val ok = storage.deleteTree(dir)
+        return CleanupResult(
+            ok = ok,
+            keptRootDir = false,
+            reason = if (ok) "" else "无写权限或目录被占用",
+        )
     }
 
     /** 从 ffmpeg 的 stderr 里挑出最有信息量的一行给用户看 */

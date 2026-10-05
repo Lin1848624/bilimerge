@@ -27,6 +27,17 @@ class BiliItem(
     val sourceBytes: Long,
     /** 是否存在 entry.json（false 说明是兜底识别出来的） */
     val hasMeta: Boolean,
+    /**
+     * 条目根目录：entry.json 所在目录；兜底识别时是被归并到的那一层。
+     * 开启清理后删的就是它，连同其中所有内容（分片、entry.json、其它清晰度、弹幕）。
+     */
+    val rootDir: DocRef?,
+    /**
+     * [rootDir] 是否恰好就是用户选中的扫描根目录。
+     * 是的话绝不能连它一起删——那样用户选的目录会凭空消失，
+     * 这种情况只清空其内容、保留目录本身。
+     */
+    val rootIsScanRoot: Boolean,
 ) {
     /** 列表里显示的标题 */
     val displayTitle: String

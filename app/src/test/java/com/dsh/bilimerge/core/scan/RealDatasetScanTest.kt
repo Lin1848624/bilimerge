@@ -63,33 +63,48 @@ class RealDatasetScanTest {
     }
 
     @Test
-    fun `清理源分片只删除媒体文件_保留元信息与目录`() {
+    fun `清理会删除整个条目目录_其它条目不受影响`() {
         val root = unzipDataset()
         val storage = FileStorage(root)
         val items = BiliScanner(storage).scan(storage.root())
         assertEquals(4, items.size)
 
-        // 模拟 MergeEngine.deleteSources 的行为
         val target = items.single { it.title.contains("新版结构") }
-        val before = target.videos.size + target.audios.size
-        var removed = 0
-        target.videos.forEach { if (storage.delete(it)) removed++ }
-        target.audios.forEach { if (storage.delete(it)) removed++ }
-        assertEquals("本次用到的分片都应被删掉", before, removed)
+        val rootDir = target.rootDir
+        assertTrue("条目应记录根目录", rootDir != null)
+        assertTrue("条目根不应等于扫描根", !target.rootIsScanRoot)
 
-        // 分片确实没了
-        assertTrue(!File(target.videos[0].path!!).exists())
-        assertTrue(!File(target.audios[0].path!!).exists())
+        val dir = File(rootDir!!.path!!)
+        assertTrue("清理前条目目录应存在", dir.isDirectory)
+        assertTrue("目录里应有 entry.json", File(dir, "entry.json").isFile)
 
-        // entry.json / index.json 与目录本身必须留着：清理只针对媒体文件
-        val dir = File(target.videos[0].path!!).parentFile!!
-        assertTrue("目录不应被删除", dir.isDirectory)
-        assertTrue("entry.json 不应被删除", File(dir.parentFile, "entry.json").isFile)
-        assertTrue("index.json 不应被删除", File(dir, "index.json").isFile)
+        // 模拟 MergeEngine.cleanupItem 的行为
+        assertTrue(storage.deleteTree(rootDir))
+        assertTrue("条目目录应被整个删除", !dir.exists())
 
-        // 其它条目不受影响
+        // 同一父目录下的另一个条目不该被牵连
         val other = items.single { it.title.contains("旧版结构") }
-        assertTrue("别的条目不该被牵连", File(other.videos[0].path!!).exists())
+        assertTrue("别的条目不该被牵连", File(other.rootDir!!.path!!).isDirectory)
+    }
+
+    @Test
+    fun `条目根就是扫描根时_只清空内容而保留目录本身`() {
+        val base = unzipDataset()
+        // 直接进到某个分P的缓存目录作为扫描根，此时条目根 == 扫描根
+        val scanDir = File(base, "1001/2001")
+        val storage = FileStorage(scanDir)
+        val items = BiliScanner(storage).scan(storage.root())
+
+        assertEquals(1, items.size)
+        assertTrue("根目录即扫描根时该标记必须为真", items[0].rootIsScanRoot)
+
+        val rootDir = items[0].rootDir!!
+        val dir = File(rootDir.path!!)
+        // 模拟 cleanupItem 对扫描根的分支：逐项清空，保留目录
+        storage.children(rootDir).forEach { storage.deleteTree(it) }
+
+        assertTrue("扫描根目录本身必须留着", dir.isDirectory)
+        assertEquals("内容应被清空", 0, dir.listFiles()?.size ?: 0)
     }
 
     @Test

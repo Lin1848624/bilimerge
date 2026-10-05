@@ -39,6 +39,9 @@ class BiliScanner(private val storage: Storage) {
         val entryFiles = ArrayList<DocRef>(64)
 
         // ---- 1. 广度优先遍历整棵树，一次拿到所有目录与媒体文件 ----
+        // 根目录本身也要登记进 nodeMap：它就是"用户选中的目录"，
+        // 清理逻辑需要拿到它的 DocRef 才能判断该不该跳过
+        nodeMap[root.key] = root
         var frontier = ArrayList<DocRef>(1).also { it += root }
         var scanned = 0
         while (frontier.isNotEmpty()) {
@@ -184,6 +187,8 @@ class BiliScanner(private val storage: Storage) {
             audios = audios,
             sourceBytes = if (bytes > 0) bytes else (meta?.totalBytes ?: 0L),
             hasMeta = meta != null,
+            rootDir = nodeMap[dirKey],
+            rootIsScanRoot = dirKey == rootKey,
         )
     }
 

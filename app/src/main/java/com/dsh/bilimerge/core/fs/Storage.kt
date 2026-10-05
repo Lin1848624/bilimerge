@@ -42,10 +42,30 @@ interface Storage {
      * 删除一个文件。
      *
      * SAF 后端要求该目录被授予了写权限，权限不足或 provider 拒绝时返回 false
-     * （不会抛异常，调用方据此提示"源文件清理失败"即可）。
-     * 只用于删除本次合并真正用到的源分片，绝不删除目录。
+     * （不会抛异常，调用方据此提示"清理失败"即可）。
      */
     fun delete(node: DocRef): Boolean
+
+    /**
+     * 递归删除一个节点（目录会连同其中的所有内容一起删掉）。
+     *
+     * 必须自己递归：`DocumentsContract.deleteDocument` 与 `File.delete()` 都只能删空目录，
+     * 对非空目录直接调用会失败。先清子项、再删自身。
+     *
+     * @return true 表示该节点最终确实不存在了
+     */
+    fun deleteTree(node: DocRef): Boolean {
+        if (node.isDir) {
+            for (child in children(node)) {
+                if (child.isDir) {
+                    deleteTree(child)
+                } else {
+                    delete(child)
+                }
+            }
+        }
+        return delete(node)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -249,7 +269,10 @@ class FileStorage(private val rootDir: File) : Storage {
 
     override fun delete(node: DocRef): Boolean {
         val f = File(node.path ?: return false)
-        return runCatching { f.isFile && f.delete() }.getOrDefault(false)
+        // 注意用 exists() 而不是 isFile：deleteTree 递归清空后还要删掉目录本身，
+        // 若在这里把目录排除掉，整个 deleteTree 会返回 false（看着像"清理失败"），
+        // 而目录其实并没有被删除。File.delete() 本身只能删空目录，这点由调用方保证。
+        return runCatching { f.exists() && f.delete() }.getOrDefault(false)
     }
 }
 
