@@ -61,6 +61,14 @@ class Prefs(context: Context) {
         get() = sp.getBoolean(KEY_DELETE_SOURCE, false)
         set(v) = sp.edit { putBoolean(KEY_DELETE_SOURCE, v) }
 
+    /**
+     * 输出容器格式，存的是 `OutputFormat.key`。
+     * 合并始终是 `-c copy`，换格式只换外壳，不重新编码。
+     */
+    var outputFormat: String
+        get() = sp.getString(KEY_OUTPUT_FORMAT, "mp4") ?: "mp4"
+        set(v) = sp.edit { putString(KEY_OUTPUT_FORMAT, v) }
+
     /** 上次扫描结果（JSON），用于冷启动秒开列表 */
     var scanCache: String?
         get() = sp.getString(KEY_SCAN_CACHE, null)
@@ -75,6 +83,7 @@ class Prefs(context: Context) {
         private const val KEY_FASTSTART = "faststart"
         private const val KEY_FORCE_STAGE = "force_stage"
         private const val KEY_DELETE_SOURCE = "delete_source"
+        private const val KEY_OUTPUT_FORMAT = "output_format"
         private const val KEY_SCAN_CACHE = "scan_cache"
     }
 }

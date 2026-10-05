@@ -3,6 +3,7 @@ package com.dsh.bilimerge.core.merge
 import android.content.Context
 import android.os.PowerManager
 import android.os.SystemClock
+import android.util.Log
 import com.arthenica.ffmpegkit.FFmpegSession
 import com.dsh.bilimerge.core.fs.Storage
 import com.dsh.bilimerge.core.model.BiliItem
@@ -58,7 +59,20 @@ class MergeManager(private val context: Context) {
     @Volatile private var wakeLock: PowerManager.WakeLock? = null
 
     val tasks: List<Task> get() = taskList
-    val isRunning: Boolean get() = job?.isActive == true
+
+    /**
+     * 是否还有任务在跑。
+     *
+     * 刻意以**任务状态**为准，而不是协程是否存活。原因：万一某个 ffmpeg 会话卡在
+     * native 层迟迟不返回，协程会一直挂着，但任务本身早已进入终态。若用 `job.isActive`
+     * 判断，「开始合并」会被永久禁用——用户除了手动点「取消」之外没有任何出路。
+     * 按任务状态判断则不会：终态就是终态，UI 立刻恢复可用。
+     */
+    val isRunning: Boolean
+        get() = taskList.any { it.status == Status.PENDING || it.status == Status.RUNNING }
+
+    /** 协程是否仍在运行。仅用于诊断：正常情况下它应与 [isRunning] 同步归零 */
+    val jobActive: Boolean get() = job?.isActive == true
 
     val finishedCount: Int
         get() = taskList.count { it.status == Status.DONE || it.status == Status.FAILED || it.status == Status.CANCELLED }
@@ -73,34 +87,47 @@ class MergeManager(private val context: Context) {
         fastStart: Boolean,
         forceStage: Boolean = false,
         deleteSource: Boolean = false,
+        format: OutputFormat = OutputFormat.MP4,
     ): Boolean {
         if (isRunning) return false
         if (items.isEmpty()) return false
+
+        // 上一次的协程有可能还挂着（任务已经终态但协程没退出，例如某个 ffmpeg
+        // 会话在 native 层未返回）。既然这次要开新的，就顺手把它收掉，避免协程堆积。
+        if (job?.isActive == true) {
+            Log.w(TAG, "previous job still active while starting a new one, cancelling it")
+            job?.cancel()
+        }
 
         taskList.clear()
         items.forEach { taskList += Task(it) }
         bump()
 
         job = scope.launch {
+            Log.i(TAG, "job start: tasks=${taskList.size} concurrency=$concurrency")
             acquireWakeLock()
             try {
                 val engine = MergeEngine(storage)
                 val permits = Semaphore(concurrency.coerceIn(1, MAX_CONCURRENCY))
                 coroutineScope {
-                    for (task in taskList) {
+                    for ((index, task) in taskList.withIndex()) {
                         launch {
+                            Log.d(TAG, "task[$index] begin")
                             permits.withPermit {
-                                runOne(engine, task, output, fastStart, forceStage, deleteSource)
+                                runOne(engine, task, output, format, fastStart, forceStage, deleteSource)
                             }
+                            Log.d(TAG, "task[$index] end")
                         }
                     }
                 }
+                Log.i(TAG, "coroutineScope returned")
                 // 全部任务结束后统一清掉空目录（含条目之间的中间层），
                 // 逐个清理时并发判断不可靠，放这里一次后序遍历最稳
                 if (deleteSource) {
                     runCatching { engine.pruneEmptyDirs(storage.root()) }
                 }
             } finally {
+                Log.i(TAG, "job finally, stillRunning=$isRunning")
                 releaseWakeLock()
                 bump()
             }
@@ -139,10 +166,12 @@ class MergeManager(private val context: Context) {
         engine: MergeEngine,
         task: Task,
         output: OutputTarget,
+        format: OutputFormat,
         fastStart: Boolean,
         forceStage: Boolean,
         deleteSource: Boolean,
     ) {
+        Log.d(TAG, "runOne enter: ${task.item.outputBaseName}")
         if (task.status == Status.CANCELLED) return
         task.status = Status.RUNNING
         bump()
@@ -161,10 +190,10 @@ class MergeManager(private val context: Context) {
                 return
             }
 
-            val prepared = output.prepare(task.item.outputBaseName, staged = useStage)
+            val prepared = output.prepare(task.item.outputBaseName, format, staged = useStage)
             if (prepared == null) {
                 task.status = Status.FAILED
-                task.message = "无法创建输出文件（目录不可写或空间不足）"
+                task.message = "无法创建输出文件（目录不可写、空间不足或格式不被接受）"
                 bump()
                 return
             }
@@ -173,6 +202,7 @@ class MergeManager(private val context: Context) {
             val outcome = engine.run(
                 item = task.item,
                 output = prepared,
+                format = format,
                 fastStart = useFastStart,
                 onProgress = { p, sp ->
                     task.progress = p
@@ -233,6 +263,7 @@ class MergeManager(private val context: Context) {
             }
         }
         bump()
+        Log.d(TAG, "runOne exit: ${task.item.outputBaseName} status=${task.status}")
     }
 
     // ------------------------------------------------------------------
@@ -268,6 +299,7 @@ class MergeManager(private val context: Context) {
     }
 
     private companion object {
+        const val TAG = "BiliMerge"
         const val MAX_CONCURRENCY = 8
         const val PROGRESS_INTERVAL_MS = 120L
         const val MAX_WAKELOCK_MS = 60L * 60L * 1000L

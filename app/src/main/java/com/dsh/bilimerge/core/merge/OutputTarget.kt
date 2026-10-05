@@ -9,7 +9,6 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import com.arthenica.ffmpegkit.FFmpegKitConfig
-import com.dsh.bilimerge.core.util.FileNames
 import java.io.File
 import java.io.FileInputStream
 
@@ -50,10 +49,11 @@ interface OutputTarget {
 
     /**
      * 为一个条目准备输出。
+     * @param format 目标容器格式，决定扩展名与 MIME
      * @param staged true 表示改走"先暂存再搬运"的兼容路径
-     * @return null 表示目标不可用（目录不可写等）
+     * @return null 表示目标不可用（目录不可写、格式不被接受等）
      */
-    fun prepare(baseName: String, staged: Boolean = false): PreparedOutput?
+    fun prepare(baseName: String, format: OutputFormat, staged: Boolean = false): PreparedOutput?
 }
 
 // ---------------------------------------------------------------------------
@@ -114,13 +114,13 @@ class MediaStoreOutput(
 
     override val supportsStaging: Boolean = true
 
-    override fun prepare(baseName: String, staged: Boolean): PreparedOutput? = runCatching {
+    override fun prepare(baseName: String, format: OutputFormat, staged: Boolean): PreparedOutput? = runCatching {
         val resolver = context.contentResolver
-        val fileName = FileNames.mp4(baseName)
+        val fileName = format.fileName(baseName)
 
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, fileName)
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, format.mime)
             put(MediaStore.Video.Media.RELATIVE_PATH, relativeDir)
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
@@ -189,13 +189,13 @@ class SafTreeOutput(
 
     override val supportsStaging: Boolean = true
 
-    override fun prepare(baseName: String, staged: Boolean): PreparedOutput? = runCatching {
+    override fun prepare(baseName: String, format: OutputFormat, staged: Boolean): PreparedOutput? = runCatching {
         val resolver = context.contentResolver
         val parentDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId)
-        val fileName = FileNames.mp4(baseName)
+        val fileName = format.fileName(baseName)
 
-        val created = DocumentsContract.createDocument(resolver, parentUri, "video/mp4", fileName)
+        val created = DocumentsContract.createDocument(resolver, parentUri, format.mime, fileName)
             ?: return null
 
         val realName = DocumentsContract.getDocumentId(created)
@@ -248,9 +248,9 @@ class LegacyFileOutput(
 
     override val supportsStaging: Boolean = false
 
-    override fun prepare(baseName: String, staged: Boolean): PreparedOutput? = runCatching {
+    override fun prepare(baseName: String, format: OutputFormat, staged: Boolean): PreparedOutput? = runCatching {
         if (!dir.exists() && !dir.mkdirs()) return null
-        val file = uniqueFile(dir, FileNames.mp4(baseName))
+        val file = uniqueFile(dir, format.fileName(baseName), format.ext)
         PreparedOutput(
             url = file.absolutePath,
             uri = null,
@@ -262,11 +262,10 @@ class LegacyFileOutput(
         )
     }.getOrNull()
 
-    private fun uniqueFile(dir: File, name: String): File {
+    private fun uniqueFile(dir: File, name: String, ext: String): File {
         var f = File(dir, name)
         if (!f.exists()) return f
         val base = name.substringBeforeLast('.')
-        val ext = name.substringAfterLast('.', "mp4")
         var i = 1
         while (f.exists() && i < 1000) {
             f = File(dir, "$base ($i).$ext")

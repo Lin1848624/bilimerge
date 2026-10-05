@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.dsh.bilimerge.core.fs.Storage
 import com.dsh.bilimerge.core.fs.StoreFactory
 import com.dsh.bilimerge.core.merge.MergeManager
+import com.dsh.bilimerge.core.merge.OutputFormat
 import com.dsh.bilimerge.core.merge.OutputTarget
 import com.dsh.bilimerge.core.merge.SafTreeOutput
 import com.dsh.bilimerge.core.merge.defaultOutputTarget
@@ -294,6 +295,7 @@ class MainActivity : AppCompatActivity() {
             fastStart = prefs.fastStart,
             forceStage = prefs.forceStage,
             deleteSource = prefs.deleteSource,
+            format = OutputFormat.fromKey(prefs.outputFormat),
         )
         if (started) toast(getString(R.string.toast_merge_started, chosen.size))
     }
@@ -364,22 +366,40 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------------ 对话框
 
     private fun showSettings() {
+        val fmt = OutputFormat.fromKey(prefs.outputFormat)
+        val onOff: (Boolean) -> String = { if (it) "开" else "关" }
         val options = arrayOf(
-            "为输出添加 faststart（便于边下边播，会多花一点时间）",
-            "始终用兼容模式输出（先写私有目录再搬运，占双倍空间，仅在直写失败时需要）",
-            "合并成功后删除整个缓存文件夹（不可恢复，释放空间最彻底）",
+            "输出格式：${fmt.label}　（${fmt.note}）",
+            "输出添加 faststart：${onOff(prefs.fastStart)}　（仅 MP4/MOV 有效，便于边下边播）",
+            "始终用兼容模式输出：${onOff(prefs.forceStage)}　（占双倍空间，仅在直写失败时需要）",
+            "合并成功后删除整个缓存文件夹：${onOff(prefs.deleteSource)}　（不可恢复）",
         )
-        val checked = booleanArrayOf(prefs.fastStart, prefs.forceStage, prefs.deleteSource)
         AlertDialog.Builder(this)
             .setTitle("设置")
-            .setMultiChoiceItems(options, checked) { _, which, isChecked ->
+            .setItems(options) { _, which ->
                 when (which) {
-                    0 -> prefs.fastStart = isChecked
-                    1 -> prefs.forceStage = isChecked
-                    2 -> prefs.deleteSource = isChecked
+                    0 -> showFormatPicker()
+                    1 -> { prefs.fastStart = !prefs.fastStart; showSettings() }
+                    2 -> { prefs.forceStage = !prefs.forceStage; showSettings() }
+                    3 -> { prefs.deleteSource = !prefs.deleteSource; showSettings() }
                 }
             }
-            .setPositiveButton("完成", null)
+            .setNegativeButton("关闭", null)
+            .show()
+    }
+
+    private fun showFormatPicker() {
+        val formats = OutputFormat.entries.toTypedArray()
+        val labels = formats.map { it.pickerLabel }.toTypedArray()
+        val current = formats.indexOfFirst { it.key == prefs.outputFormat }.coerceAtLeast(0)
+        AlertDialog.Builder(this)
+            .setTitle("输出格式")
+            .setSingleChoiceItems(labels, current) { dialog, which ->
+                prefs.outputFormat = formats[which].key
+                dialog.dismiss()
+                showSettings()
+            }
+            .setNegativeButton("取消") { _, _ -> showSettings() }
             .show()
     }
 
@@ -428,6 +448,8 @@ class MainActivity : AppCompatActivity() {
             对 Android/data 下的目录仍然无效（系统限制），但对你复制出来的目录有效。
 
             其它
+            · 输出格式可在「设置」里切换 MP4 / MKV / MOV / TS。合并始终是无损封装，
+              换格式只换外壳、不重新编码，画质和速度都不受影响
             · 只有画面没有声音的缓存也能合并，会自动识别
             · 目录结构从老版 {avid}/{cid}/lua.flv.bili2api.80/0.m4s 到新版
               {avid}/{cid}/{quality}/video.m4s 都支持，不依赖固定布局

@@ -2,6 +2,7 @@ package com.dsh.bilimerge.core.scan
 
 import com.dsh.bilimerge.core.fs.FileStorage
 import com.dsh.bilimerge.core.merge.MergeEngine
+import com.dsh.bilimerge.core.merge.OutputFormat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -158,6 +159,63 @@ class RealDatasetScanTest {
         assertTrue("空掉的 1001 应被删除", !File(root, "1001").exists())
         assertTrue("还有内容的 1002 必须留着", File(root, "1002/2002/entry.json").isFile)
         assertTrue("1003 同理", File(root, "1003/2003/entry.json").isFile)
+    }
+
+    @Test
+    fun `非 MP4 容器不会带上 movflags`() {
+        val root = unzipDataset()
+        val storage = FileStorage(root)
+        val items = BiliScanner(storage).scan(storage.root())
+        val item = items.first { it.videos.isNotEmpty() && it.audios.isNotEmpty() }
+        val engine = MergeEngine(storage)
+
+        // MP4 + 开着 faststart：应当带上
+        val mp4 = engine.buildArgs(item, "/tmp/a.mp4", OutputFormat.MP4, fastStart = true)!!
+        assertTrue("MP4 应带 -movflags", mp4.contains("-movflags"))
+        assertTrue(mp4.contains("+faststart"))
+
+        // MKV / TS 上 movflags 没有意义。实测 ffmpeg 会静默忽略（不报错也不警告），
+        // 但既然不该加，它就不该出现在拼出来的命令行里
+        val mkv = engine.buildArgs(item, "/tmp/a.mkv", OutputFormat.MKV, fastStart = true)!!
+        assertTrue("MKV 不该带 -movflags", !mkv.contains("-movflags"))
+
+        val ts = engine.buildArgs(item, "/tmp/a.ts", OutputFormat.TS, fastStart = true)!!
+        assertTrue("TS 不该带 -movflags", !ts.contains("-movflags"))
+
+        // 开关关掉时 MP4 也不加
+        val mp4NoFs = engine.buildArgs(item, "/tmp/a.mp4", OutputFormat.MP4, fastStart = false)!!
+        assertTrue("关闭时不该带 -movflags", !mp4NoFs.contains("-movflags"))
+
+        // 换容器不改变"无损封装"这一本质：参数里始终是 -c copy，绝不能出现编码器
+        for (args in listOf(mp4, mkv, ts)) {
+            val cIndex = args.indexOf("-c")
+            assertTrue("-c 后面必须是 copy", cIndex >= 0 && args[cIndex + 1] == "copy")
+        }
+    }
+
+    @Test
+    fun `输出格式的扩展名_MIME_与回落行为`() {
+        val expected = mapOf(
+            OutputFormat.MP4 to "mp4",
+            OutputFormat.MKV to "mkv",
+            OutputFormat.MOV to "mov",
+            OutputFormat.TS to "ts",
+        )
+        for ((fmt, ext) in expected) {
+            assertEquals(ext, fmt.ext)
+            assertTrue("MIME 应是 video/ 开头，实际 ${fmt.mime}", fmt.mime.startsWith("video/"))
+            assertTrue("文件名要带正确扩展名", fmt.fileName("测试标题").endsWith(".$ext"))
+        }
+
+        assertEquals(OutputFormat.MP4, OutputFormat.fromKey(null))
+        assertEquals(OutputFormat.MP4, OutputFormat.fromKey("webm")) // 不提供的格式回落到 MP4
+        assertEquals(OutputFormat.MKV, OutputFormat.fromKey("mkv"))
+
+        // faststart 的能力声明必须和上面的参数测试一致
+        assertTrue(OutputFormat.MP4.supportsFastStart)
+        assertTrue(OutputFormat.MOV.supportsFastStart)
+        assertTrue(!OutputFormat.MKV.supportsFastStart)
+        assertTrue(!OutputFormat.TS.supportsFastStart)
     }
 
     // ------------------------------------------------------------------

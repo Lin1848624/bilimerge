@@ -35,7 +35,12 @@ class MergeEngine(private val storage: Storage) {
      * 之所以不在参数里做任何 shell 转义：调用方用 executeWithArguments 数组形式，
      * 每个参数原样传给 ffmpeg，路径里有空格、括号、中文都不会出问题。
      */
-    fun buildArgs(item: BiliItem, outputUrl: String, fastStart: Boolean): Array<String>? {
+    fun buildArgs(
+        item: BiliItem,
+        outputUrl: String,
+        format: OutputFormat,
+        fastStart: Boolean,
+    ): Array<String>? {
         val videoUrls = item.videos.mapNotNull { storage.ffmpegUrl(it, forWrite = false) }
         val audioUrls = item.audios.mapNotNull { storage.ffmpegUrl(it, forWrite = false) }
 
@@ -68,7 +73,9 @@ class MergeEngine(private val storage: Storage) {
         args += "-c"; args += "copy"
         args += "-map_metadata"; args += "0"
         args += "-metadata"; args += "title=${item.displayTitle}"
-        if (fastStart) {
+        // movflags 只对 MP4/MOV 家族有意义。实测给 MKV/TS 加上会被 ffmpeg 静默忽略
+        // （既不报错也不警告），但仍然只在该加的时候加，免得命令行混进无意义的参数
+        if (fastStart && format.supportsFastStart) {
             args += "-movflags"; args += "+faststart"
         }
         args += outputUrl
@@ -84,11 +91,12 @@ class MergeEngine(private val storage: Storage) {
     fun run(
         item: BiliItem,
         output: PreparedOutput,
+        format: OutputFormat,
         fastStart: Boolean,
         onProgress: (Float, Double) -> Unit,
         onSessionReady: (FFmpegSession) -> Unit = {},
     ): Outcome {
-        val args = buildArgs(item, output.url, fastStart)
+        val args = buildArgs(item, output.url, format, fastStart)
             ?: return Outcome(false, false, "没有可用的视频/音频流", 0L, output.label)
 
         val errorLog = StringBuilder()
