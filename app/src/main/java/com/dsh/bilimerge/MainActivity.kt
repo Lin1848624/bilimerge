@@ -8,10 +8,16 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.View
+import android.view.ViewGroup
+import android.widget.BaseAdapter
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -365,43 +371,168 @@ class MainActivity : AppCompatActivity() {
 
     // ------------------------------------------------------------------ 对话框
 
+    // ------------------------------------------------------------------ 设置面板
+
     private fun showSettings() {
+        val panel = layoutInflater.inflate(R.layout.dialog_settings, null)
+        val container = panel.findViewById<LinearLayout>(R.id.settingsContainer)
+        val dividerColor = ContextCompat.getColor(this, R.color.divider)
+
+        container.addView(dialogTitle("设置"))
+
+        // ---- 输出 ----
+        container.addView(groupTitle("输出"))
         val fmt = OutputFormat.fromKey(prefs.outputFormat)
-        val onOff: (Boolean) -> String = { if (it) "开" else "关" }
-        val options = arrayOf(
-            "输出格式：${fmt.label}　（${fmt.note}）",
-            "输出添加 faststart：${onOff(prefs.fastStart)}　（仅 MP4/MOV 有效，便于边下边播）",
-            "始终用兼容模式输出：${onOff(prefs.forceStage)}　（占双倍空间，仅在直写失败时需要）",
-            "合并成功后删除整个缓存文件夹：${onOff(prefs.deleteSource)}　（不可恢复）",
-        )
-        AlertDialog.Builder(this)
-            .setTitle("设置")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showFormatPicker()
-                    1 -> { prefs.fastStart = !prefs.fastStart; showSettings() }
-                    2 -> { prefs.forceStage = !prefs.forceStage; showSettings() }
-                    3 -> { prefs.deleteSource = !prefs.deleteSource; showSettings() }
-                }
+        val outputCard = card()
+        var formatRow: View? = null
+        formatRow = valueRow(outputCard, "输出格式", fmt.note, fmt.label) {
+            showFormatPicker { picked ->
+                // 就地刷新这一行，不必把整个面板重建一遍
+                formatRow?.findViewById<TextView>(R.id.tvSettingSubtitle)?.text = picked.note
+                formatRow?.findViewById<TextView>(R.id.tvSettingValue)?.text = picked.label
             }
-            .setNegativeButton("关闭", null)
-            .show()
+        }
+        outputCard.addView(formatRow)
+        outputCard.addView(divider(dividerColor))
+        outputCard.addView(
+            switchRow(outputCard, "添加 faststart", "便于边下边播；仅 MP4 / MOV 有效", prefs.fastStart) {
+                prefs.fastStart = it
+            }
+        )
+        container.addView(outputCard)
+
+        // ---- 行为 ----
+        container.addView(groupTitle("行为"))
+        val behaviorCard = card()
+        behaviorCard.addView(
+            switchRow(behaviorCard, "兼容模式输出", "直写失败时自动启用；会占用双倍空间", prefs.forceStage) {
+                prefs.forceStage = it
+            }
+        )
+        behaviorCard.addView(divider(dividerColor))
+        behaviorCard.addView(
+            switchRow(behaviorCard, "合并成功后删除缓存目录", "不可恢复；仅在成品确认落盘后执行", prefs.deleteSource) {
+                prefs.deleteSource = it
+            }
+        )
+        container.addView(behaviorCard)
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(panel)
+            .setPositiveButton("完成", null)
+            .create()
+        dialog.show()
+        // AlertDialog 默认是直角白底，换成圆角才和卡片风格一致
+        dialog.window?.setBackgroundDrawable(ContextCompat.getDrawable(this, R.drawable.bg_dialog))
     }
 
-    private fun showFormatPicker() {
-        val formats = OutputFormat.entries.toTypedArray()
-        val labels = formats.map { it.pickerLabel }.toTypedArray()
-        val current = formats.indexOfFirst { it.key == prefs.outputFormat }.coerceAtLeast(0)
-        AlertDialog.Builder(this)
-            .setTitle("输出格式")
-            .setSingleChoiceItems(labels, current) { dialog, which ->
-                prefs.outputFormat = formats[which].key
-                dialog.dismiss()
-                showSettings()
+    private fun showFormatPicker(onPicked: (OutputFormat) -> Unit) {
+        val formats = OutputFormat.entries
+        val selected = formats.indexOfFirst { it.key == prefs.outputFormat }.coerceAtLeast(0)
+
+        val adapter = object : BaseAdapter() {
+            override fun getCount(): Int = formats.size
+            override fun getItem(position: Int): Any = formats[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = convertView
+                    ?: layoutInflater.inflate(R.layout.row_format_option, parent, false)
+                val f = formats[position]
+                v.findViewById<TextView>(R.id.tvFormatLabel).text = f.label
+                v.findViewById<TextView>(R.id.tvFormatNote).text = f.note
+                val isSelected = position == selected
+                v.findViewById<TextView>(R.id.tvFormatCheck).visibility =
+                    if (isSelected) View.VISIBLE else View.INVISIBLE
+                v.findViewById<LinearLayout>(R.id.formatTextWrap).background =
+                    if (isSelected) ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_format_selected)
+                    else null
+                return v
             }
-            .setNegativeButton("取消") { _, _ -> showSettings() }
-            .show()
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("输出格式")
+            .setAdapter(adapter) { d, which ->
+                val picked = formats[which]
+                prefs.outputFormat = picked.key
+                d.dismiss()
+                onPicked(picked)
+            }
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ContextCompat.getDrawable(this, R.drawable.bg_dialog))
     }
+
+    // ---- 设置面板的小零件 ----
+
+    private fun dialogTitle(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text))
+        textSize = 20f
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        setPadding(dp(6), dp(10), dp(6), dp(2))
+    }
+
+    private fun groupTitle(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text_secondary))
+        textSize = 12f
+        letterSpacing = 0.08f
+        setPadding(dp(6), dp(16), dp(6), dp(8))
+    }
+
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = ContextCompat.getDrawable(this@MainActivity, R.drawable.bg_card)
+        // 让子项的点击反馈被卡片圆角裁切，否则涟漪会溢出到方角
+        clipToOutline = true
+    }
+
+    private fun divider(color: Int): View = View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+        setBackgroundColor(color)
+    }
+
+    private fun switchRow(
+        parent: ViewGroup,
+        title: String,
+        subtitle: String,
+        checked: Boolean,
+        onChange: (Boolean) -> Unit,
+    ): View {
+        // 传真实 parent：root 传 null 时行布局的 match_parent 无法解析成正确的 LayoutParams
+        val row = layoutInflater.inflate(R.layout.row_setting_switch, parent, false)
+        row.findViewById<TextView>(R.id.tvSettingTitle).text = title
+        row.findViewById<TextView>(R.id.tvSettingSubtitle).text = subtitle
+        val sw = row.findViewById<SwitchCompat>(R.id.swSetting)
+        sw.isChecked = checked
+        // 整行响应点击；开关自身不接收点击，避免出现两套状态
+        row.setOnClickListener {
+            val next = !sw.isChecked
+            sw.isChecked = next
+            onChange(next)
+        }
+        return row
+    }
+
+    private fun valueRow(
+        parent: ViewGroup,
+        title: String,
+        subtitle: String,
+        value: String,
+        onClick: () -> Unit,
+    ): View {
+        val row = layoutInflater.inflate(R.layout.row_setting_value, parent, false)
+        row.findViewById<TextView>(R.id.tvSettingTitle).text = title
+        row.findViewById<TextView>(R.id.tvSettingSubtitle).text = subtitle
+        row.findViewById<TextView>(R.id.tvSettingValue).text = value
+        row.setOnClickListener { onClick() }
+        return row
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun showHelp() {
         AlertDialog.Builder(this)

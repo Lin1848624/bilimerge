@@ -5,6 +5,9 @@
     <string name="header_subtitle">B 站缓存无损合并</string>
     <string name="help">帮助</string>
     <string name="settings">设置</string>
+    <!-- 界面符号，不参与翻译 -->
+    <string name="chevron_right" translatable="false">›</string>
+    <string name="check_mark" translatable="false">✓</string>
 
     <string name="source_title">缓存目录</string>
     <string name="source_empty">尚未选择。请选择存放 B 站缓存视频的目录</string>
