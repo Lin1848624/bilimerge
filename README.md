@@ -246,7 +246,7 @@ remux 是顺序 IO 密集而非 CPU 密集，并发过高只会让磁头来回�
 
 ## 七、构建期踩到的坑（记录备查）
 
-这三条都是本仓库实际编译失败后定位到的，写下来免得重犯：
+这四条都是本仓库实际编译失败后定位到的，写下来免得重犯：
 
 1. **ViewBinding 的根布局不能带 `android:id="@+id/root"`。**
    绑定类总会生成 `getRoot()`，再给根布局一个 `root` id 就会撞出两个同名访问器。
@@ -259,6 +259,12 @@ remux 是顺序 IO 密集而非 CPU 密集，并发过高只会让磁头来回�
 3. **Kotlin 调用处不能写 `foo(x, needWrite: Boolean = false)`。**
    那是声明默认值的语法，调用处只能写 `foo(x, needWrite = false)`。
    这个错误会连带抛出 5 条语法错误，掩盖真正的问题。
+
+4. **不要用 PowerShell 改这个仓库里的源文件。**
+   `Get-Content -Raw` 在 PowerShell 5.1 下按 ANSI 解码 UTF-8 无 BOM 文件，
+   而本仓库的注释全是中文——读出来是乱码，写回去整个文件语法崩坏
+   （`build.gradle.kts` 就这么被毁过一次，报出上百行 `Unexpected symbol`，只能 `git checkout` 恢复）。
+   改文件用带编码识别的编辑器，或先 `git status` 确认可回滚。
 
 另外，`FFmpegKitConfig` **不需要**任何 `init(context)` 调用，
 `getSafParameter*` 系列返回的确实是 `saf:<id>` 形式的字符串（已用 `javap -c` 核对字节码确认）。
