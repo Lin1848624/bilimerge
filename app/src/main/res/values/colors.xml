@@ -14,4 +14,6 @@
 
     <color name="success">#2E9E5B</color>
     <color name="danger">#D9363E</color>
+    <!-- 用于"能跑但需要注意"的提示，比如极速模式没能生效 -->
+    <color name="warning">#B26500</color>
 </resources>

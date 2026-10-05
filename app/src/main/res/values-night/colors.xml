@@ -14,4 +14,5 @@
 
     <color name="success">#4CC47C</color>
     <color name="danger">#F26A6A</color>
+    <color name="warning">#E0A33A</color>
 </resources>

@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
+import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.BaseAdapter
@@ -122,7 +123,10 @@ class MainActivity : AppCompatActivity() {
         // 用户可能刚从系统设置里授权回来：把当前目录升级成直读模式
         val st = storage
         if (st != null && !st.isDirect && StoreFactory.hasAllFilesAccess(this)) {
-            prefs.cacheTreeUri?.let { runCatching { applySource(Uri.parse(it), rescan = false) } }
+            prefs.cacheTreeUri?.let { saved ->
+                runCatching { applySource(Uri.parse(saved), rescan = false) }
+                    .onFailure { Log.w(TAG, "升级极速模式失败", it) }
+            }
         }
     }
 
@@ -181,7 +185,8 @@ class MainActivity : AppCompatActivity() {
         contentResolver.persistedUriPermissions.any { it.uri == uri && it.isReadPermission }
 
     private fun applySource(uri: Uri, rescan: Boolean) {
-        val st = StoreFactory.create(this, uri)
+        val resolution = StoreFactory.resolve(this, uri)
+        val st = resolution.storage
         storage = st
         prefs.cacheLabel = st.label
 
@@ -189,9 +194,24 @@ class MainActivity : AppCompatActivity() {
         b.badgeMode.visibility = View.VISIBLE
         b.badgeMode.text = getString(if (st.isDirect) R.string.badge_fast else R.string.badge_saf)
         b.btnRescan.visibility = View.VISIBLE
+        showFastHint(resolution.blockedReason)
         refreshFastButton()
 
         if (rescan) doScan()
+    }
+
+    /**
+     * 已授权极速模式却没生效时，把原因摆在界面上。
+     * 否则三种完全不同的原因（没授权 / 目录换算不出路径 / 路径读不了）都只表现为
+     * 「SAF 模式」四个字，用户根本无从判断。
+     */
+    private fun showFastHint(reason: String?) {
+        if (reason.isNullOrBlank()) {
+            b.tvFastHint.visibility = View.GONE
+        } else {
+            b.tvFastHint.text = reason
+            b.tvFastHint.visibility = View.VISIBLE
+        }
     }
 
     private fun refreshFastButton() {
@@ -533,6 +553,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private companion object {
+        const val TAG = "BiliMerge"
+    }
 
     private fun showHelp() {
         val panel = layoutInflater.inflate(R.layout.dialog_settings, null)

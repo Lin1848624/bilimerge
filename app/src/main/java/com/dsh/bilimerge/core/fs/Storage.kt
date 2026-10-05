@@ -82,7 +82,18 @@ class SafStorage(
 ) : Storage {
 
     override val label: String
-        get() = DocumentsContract.getTreeDocumentId(treeUri).substringAfter(':').ifEmpty { "/" }
+        get() {
+            val docId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }
+                .getOrNull().orEmpty()
+            val relative = docId.substringAfter(':', "")
+            return when {
+                // primary:Download/bili_cache → Download/bili_cache
+                relative.isNotEmpty() -> relative
+                // 裸 ID（来自「下载」这类提供者）：光看数字根本不知道是什么目录，标一下
+                docId.isNotEmpty() -> "文档目录 $docId"
+                else -> "/"
+            }
+        }
 
     override val isDirect: Boolean = false
 
@@ -282,6 +293,21 @@ class FileStorage(private val rootDir: File) : Storage {
 
 object StoreFactory {
 
+    /**
+     * 目录解析结果。
+     *
+     * 之所以要把"为什么没走直读"也带出来：授权之后仍显示 SAF 模式，用户是无从判断的——
+     * 可能是没授权、可能是目录来自别的文档提供者换算不出路径、也可能是路径读不了，
+     * 三种情况的表现一模一样，只能靠这里把原因传到界面上。
+     */
+    class Resolution(
+        val storage: Storage,
+        /** 已进入直读模式时是真实路径 */
+        val directPath: String?,
+        /** 本来可以直读却被挡住时的原因；未授权或直读成功时为 null */
+        val blockedReason: String?,
+    )
+
     /** 是否已获得"所有文件访问权限"（能直接读公共目录） */
     fun hasAllFilesAccess(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -293,8 +319,10 @@ object StoreFactory {
     }
 
     /**
-     * 把 SAF 树 URI 还原成真实路径。只对 primary 与 SD 卡卷有效；
-     * 还原成功也不代表可读（分区存储下普通 app 读不了），必须再用 canRead 验证。
+     * 把 SAF 树 URI 还原成真实路径。只对 primary 与 SD 卡卷有效。
+     *
+     * 注意从「下载」等文档提供者选来的目录，documentId 往往是不带卷标的裸数字 ID，
+     * 这里必然返回 null——那种情况下无法直读，只能继续走 SAF。
      */
     fun resolveRealPath(treeUri: Uri): String? {
         val docId = runCatching { DocumentsContract.getTreeDocumentId(treeUri) }.getOrNull() ?: return null
@@ -314,19 +342,41 @@ object StoreFactory {
     }
 
     /**
-     * 选择后端：能直读就用 [FileStorage]（快），否则退回 SAF。
-     * 注意 Android 11+ 即使有 MANAGE_EXTERNAL_STORAGE 也读不了 Android/data 下别的应用目录，
+     * 解析目录，并给出没能直读的原因（如果有）。
+     *
+     * Android 11+ 即使有 MANAGE_EXTERNAL_STORAGE 也读不了 Android/data 下别的应用目录，
      * 这种情况 canRead() 会是 false，于是自动落到 SAF。
      */
-    fun create(context: Context, treeUri: Uri, preferDirect: Boolean = true): Storage {
-        if (preferDirect && hasAllFilesAccess(context)) {
-            val real = resolveRealPath(treeUri)
-            if (real != null && File(real).canRead()) {
-                return FileStorage(File(real))
-            }
+    fun resolve(context: Context, treeUri: Uri): Resolution {
+        val saf = SafStorage(context, treeUri)
+
+        if (!hasAllFilesAccess(context)) {
+            // 没授权就没必要解释"为什么不是极速"，那是用户主动选择的结果
+            return Resolution(saf, null, null)
         }
-        return SafStorage(context, treeUri)
+
+        val real = resolveRealPath(treeUri)
+            ?: return Resolution(
+                saf, null,
+                "已授予所有文件访问权限，但这个目录来自「下载」等文档提供者，换算不出真实路径。" +
+                    "想用极速模式，请从「设备存储」逐层进入后重新选择。",
+            )
+
+        if (!File(real).canRead()) {
+            return Resolution(
+                saf, null,
+                "已授予所有文件访问权限，但 $real 仍然读不了（Android 11 起 /Android/data 下的" +
+                    "其它应用目录即使授权也进不去）。",
+            )
+        }
+
+        return Resolution(FileStorage(File(real)), real, null)
     }
+
+    /** 只要 storage，不关心原因时的便捷入口 */
+    fun create(context: Context, treeUri: Uri, preferDirect: Boolean = true): Storage =
+        if (preferDirect) resolve(context, treeUri).storage
+        else SafStorage(context, treeUri)
 
     /** 由绝对路径直接构造（用于内部缓存目录等已知位置） */
     fun direct(path: File): Storage = FileStorage(path)

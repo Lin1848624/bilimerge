@@ -106,6 +106,19 @@
             tools:text="识别到 24 个视频，共 8.3 GB"
             tools:visibility="visible" />
 
+        <!-- 已授权极速模式却没能生效时，在这里说明原因 -->
+        <TextView
+            android:id="@+id/tvFastHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:lineSpacingExtra="2dp"
+            android:textColor="@color/warning"
+            android:textSize="11sp"
+            android:visibility="gone"
+            tools:text="已授予所有文件访问权限，但这个目录来自「下载」等文档提供者，换算不出真实路径。想用极速模式，请从「设备存储」逐层进入后重新选择。"
+            tools:visibility="visible" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
