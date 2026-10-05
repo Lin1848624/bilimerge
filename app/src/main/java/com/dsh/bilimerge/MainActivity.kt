@@ -535,59 +535,97 @@ class MainActivity : AppCompatActivity() {
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun showHelp() {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_help_title)
-            .setMessage(HELP_TEXT)
-            .setPositiveButton(R.string.dialog_help_ok, null)
-            .setNeutralButton(R.string.dialog_help_open_settings) { _, _ -> openAllFilesSettings() }
-            .show()
+        val panel = layoutInflater.inflate(R.layout.dialog_settings, null)
+        val container = panel.findViewById<LinearLayout>(R.id.settingsContainer)
+
+        container.addView(dialogTitle("帮助"))
+
+        for (section in helpSections()) {
+            container.addView(groupTitle(section.title))
+            val card = card()
+            section.paragraphs.forEach { card.addView(paragraph(it)) }
+            container.addView(card)
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(panel)
+            .setPositiveButton("知道了", null)
+            .setNeutralButton("去授权极速模式") { _, _ -> openAllFilesSettings() }
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ContextCompat.getDrawable(this, R.drawable.bg_dialog))
+    }
+
+    /** 帮助正文的一段。行距放宽一点，因为这里是连续阅读的文字而不是一行设置项 */
+    private fun paragraph(text: String): TextView = TextView(this).apply {
+        this.text = text
+        setTextColor(ContextCompat.getColor(this@MainActivity, R.color.text))
+        textSize = 13.5f
+        setLineSpacing(dp(4).toFloat(), 1f)
+        setPadding(dp(16), dp(12), dp(16), dp(12))
     }
 
     private fun toast(msg: String) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     }
 
-    private companion object {
-        val HELP_TEXT = """
-            它能做什么
-            把 B 站客户端缓存的音视频分片（m4s）无损合并成一个 mp4。全程 -c copy，不重新编码，
-            画质零损失，速度基本等于磁盘拷贝；合并不会删除原缓存。
+    /** 帮助的一节：标题 + 若干段正文。刻意保持纯数据，增删内容不必碰布局代码 */
+    private class HelpSection(val title: String, val paragraphs: List<String>)
 
-            为什么需要你自己选目录
-            Android 11 起，任何普通应用都进不去 /Android/data/tv.danmaku.bili/ 里的缓存。
-            请先用下面任一方式把缓存目录搬到你可以选中的位置：
-
-            1) 免 root：用 MT 管理器等支持 Shizuku 的文件管理器，把
-               /storage/emulated/0/Android/data/tv.danmaku.bili/download
-               整个复制到 /storage/emulated/0/BiliCache
-
-            2) 用电脑：手机连电脑后执行
-               adb pull /sdcard/Android/data/tv.danmaku.bili/download ./bili_cache
-               再把 bili_cache 拷回手机的公共目录
-
-            3) 部分 B 站版本支持在「我的 - 设置 - 缓存设置」里自定义缓存位置，
-               直接把它指到公共目录即可
-
-            怎么用
-            1. 点「选择目录」选中放缓存的目录（例如 /BiliCache/download）
-            2. 等扫描完成，列表会列出识别到的每个分P
-            3. 勾选要合并的项，点「开始合并」
-            4. 成品默认在 Movies/BiliMerge/，点已完成的条目可直接播放
-
-            关于极速模式
-            授权「所有文件访问权限」后，扫描会直接读文件系统，比 SAF 快很多。
-            对 Android/data 下的目录仍然无效（系统限制），但对你复制出来的目录有效。
-
-            其它
-            · 输出格式可在「设置」里切换 MP4 / MKV / MOV / TS。合并始终是无损封装，
-              换格式只换外壳、不重新编码，画质和速度都不受影响
-            · 只有画面没有声音的缓存也能合并，会自动识别
-            · 目录结构从老版 {avid}/{cid}/lua.flv.bili2api.80/0.m4s 到新版
-              {avid}/{cid}/{quality}/video.m4s 都支持，不依赖固定布局
-            · 合并默认不删除缓存。批量处理怕占空间的话，可在「设置」里打开
-              「合并成功后删除整个缓存文件夹」——它只在成品确认落盘后才执行，
-              会把该视频的缓存目录连同分片、entry.json、未用到的其它清晰度一并删掉，
-              空出来的上级目录也会顺手清掉；你选中的那个目录本身始终保留
-        """.trimIndent()
-    }
+    private fun helpSections(): List<HelpSection> = listOf(
+        HelpSection(
+            "它能做什么",
+            listOf(
+                "把 B 站客户端缓存的音视频分片（m4s）无损合并成一个 MP4。全程 -c copy，" +
+                    "不重新编码，画质零损失，速度基本等于磁盘拷贝。",
+                "合并默认不会删除原缓存。确认成品没问题后再自行清理，" +
+                    "或者打开设置里的自动清理。",
+            ),
+        ),
+        HelpSection(
+            "为什么需要你自己选目录",
+            listOf(
+                "Android 11 起，任何普通应用都进不去 /Android/data/tv.danmaku.bili/ 里的缓存，" +
+                    "这是系统限制，没有 root 绕不过去。请先用下面任一方式把缓存搬到你能选中的位置：",
+                "① 免 root：用 MT 管理器等支持 Shizuku 的文件管理器，把\n" +
+                    "/storage/emulated/0/Android/data/tv.danmaku.bili/download\n" +
+                    "整个复制到 /storage/emulated/0/BiliCache",
+                "② 用电脑：手机连电脑后执行\n" +
+                    "adb pull /sdcard/Android/data/tv.danmaku.bili/download ./bili_cache\n" +
+                    "再把 bili_cache 拷回手机的公共目录",
+                "③ 部分 B 站版本支持在「我的 → 设置 → 缓存设置」里自定义缓存位置，" +
+                    "直接把它指到公共目录即可",
+            ),
+        ),
+        HelpSection(
+            "怎么用",
+            listOf(
+                "1. 点「选择目录」，选中放缓存的目录（例如 /BiliCache/download）",
+                "2. 等扫描完成，列表会列出识别到的每个分P",
+                "3. 勾选要合并的项，点「开始合并」",
+                "4. 成品默认落在 Movies/BiliMerge/，点已完成的条目可直接播放",
+            ),
+        ),
+        HelpSection(
+            "关于极速模式",
+            listOf(
+                "授权「所有文件访问权限」后，扫描会改为直接读文件系统，比 SAF 快一个数量级。",
+                "对 /Android/data 下的目录仍然无效（系统限制），但对你复制出来的目录有效。",
+            ),
+        ),
+        HelpSection(
+            "其它",
+            listOf(
+                "· 输出格式可在「设置」里切换 MP4 / MKV / MOV / TS。合并始终是无损封装，" +
+                    "换格式只换外壳、不重新编码，画质和速度都不受影响",
+                "· 只有画面没有声音的缓存也能合并，会自动识别",
+                "· 目录结构从老版 {avid}/{cid}/lua.flv.bili2api.80/0.m4s 到新版 " +
+                    "{avid}/{cid}/{quality}/video.m4s 都支持，不依赖固定布局",
+                "· 想让合并完顺手清理原缓存，可在「设置」里打开「合并成功后删除缓存目录」。" +
+                    "它只在成品确认落盘后才执行，会把该视频的缓存目录连同分片、entry.json、" +
+                    "未用到的其它清晰度一并删掉，空出来的上级目录也会顺手清掉；" +
+                    "而你选中的那个目录本身始终保留",
+            ),
+        ),
+    )
 }

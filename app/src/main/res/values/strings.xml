@@ -40,10 +40,6 @@
     <string name="status_failed">✕ %1$s</string>
     <string name="status_cancelled">已取消</string>
 
-    <string name="dialog_help_title">使用说明</string>
-    <string name="dialog_help_ok">知道了</string>
-    <string name="dialog_help_open_settings">去授权极速模式</string>
-
     <string name="toast_need_source">请先选择缓存目录</string>
     <string name="toast_nothing_selected">请至少勾选一个视频</string>
     <string name="toast_merge_started">已开始合并 %1$d 个视频</string>
