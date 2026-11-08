@@ -11,8 +11,8 @@ android {
         applicationId = "com.dsh.bilimerge"
         minSdk = 24
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.4.2"
+        versionCode = 9
+        versionName = "1.4.3"
 
         // 只打包 arm64-v8a：ffmpeg-kit-min 仅提供 arm64-v8a / x86_64，
         // 而现代真机全部是 arm64，单 ABI 可让 APK 体积减半。

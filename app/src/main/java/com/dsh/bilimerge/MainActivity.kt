@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity() {
     private val selected = LinkedHashSet<String>()
     private var scanJob: Job? = null
     private var wasRunning = false
+    /** 当前正在显示的 toast；用来在任何新提示出现前撤掉旧的，避免排队和旧结果残留 */
+    private var currentToast: Toast? = null
 
     // ------------------------------------------------------------------ 结果回调
 
@@ -313,7 +315,14 @@ class MainActivity : AppCompatActivity() {
         if (chosen.isEmpty()) return toast(getString(R.string.toast_nothing_selected))
 
         val concurrency = prefs.concurrency.takeIf { it > 0 } ?: defaultConcurrency()
-        val started = mergeManager.start(
+        // 这里刻意不弹「已开始合并」：进度面板和每行状态在下一帧就会显示出来，
+        // 再叠一条 toast 只会和结尾的「合并结束」挤在一起，让人分不清哪条才是真完成。
+        // 启动失败的唯一情形是「已有任务在跑」，而这期间按钮本来就是禁用的，无需额外提示。
+        //
+        // 顺手撤掉上一轮可能还挂在屏幕上的结果 toast：它属于上一轮，如果留到新一轮
+        // 开始之后才消失，看起来就像「刚点开始就提示合并成功」。
+        currentToast?.cancel()
+        mergeManager.start(
             items = chosen,
             storage = st,
             output = target,
@@ -323,7 +332,6 @@ class MainActivity : AppCompatActivity() {
             deleteSource = prefs.deleteSource,
             format = OutputFormat.fromKey(prefs.outputFormat),
         )
-        if (started) toast(getString(R.string.toast_merge_started, chosen.size))
     }
 
     private fun defaultConcurrency(): Int =
@@ -590,7 +598,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toast(msg: String) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        // 一次只留一条：系统默认会把连续调用的 toast 排队，前一条没消失时后一条要等 2 秒，
+        // 于是提示的出现时机跟操作对不上，看起来就像「还没成功就提示成功」
+        currentToast?.cancel()
+        currentToast = Toast.makeText(this, msg, Toast.LENGTH_SHORT).also { it.show() }
     }
 
     /** 帮助的一节：标题 + 若干段正文。刻意保持纯数据，增删内容不必碰布局代码 */

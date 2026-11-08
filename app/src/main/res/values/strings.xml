@@ -42,7 +42,6 @@
 
     <string name="toast_need_source">请先选择缓存目录</string>
     <string name="toast_nothing_selected">请至少勾选一个视频</string>
-    <string name="toast_merge_started">已开始合并 %1$d 个视频</string>
     <string name="toast_merge_done">合并结束：成功 %1$d 个，失败 %2$d 个</string>
     <string name="toast_no_permission">未获得目录的持久访问权限，请重新选择</string>
 </resources>
